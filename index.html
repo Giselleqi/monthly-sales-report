@@ -43,12 +43,12 @@
   tr.grand td { font-weight: 700; border-bottom: none; }
   .empty { color: var(--faint); text-align: center; padding: 18px 0; }
   .note { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
-  ol { padding-left: 20px; margin: 0 0 10px; }
+  pre.ex { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 13px; margin: 4px 0 0; overflow-x: auto; }
 </style>
 </head>
 <body>
 <div class="top"><button type="button" id="theme"></button></div>
-<h1>Monthly sales reporting</h1>
+<h1>Monthly Sales Reporting</h1>
 
 <h2>Try the report</h2>
 <div class="report">
@@ -64,6 +64,12 @@
     <thead><tr><th>Month</th><th>Product</th><th>Sales</th><th class="num">Total</th></tr></thead>
     <tbody id="body"><tr><td colspan="4" class="empty">Upload a file or load the sample data to see the report</td></tr></tbody>
   </table></div>
+  <p class="note" style="margin-top:12px">Example of a sales file:</p>
+<pre class="ex">Date,Product,Amount
+2026-10-03,Widget A,1250
+2026-10-17,Widget B,820
+2026-11-05,Widget A,1430
+11/21/2026,Gadget C,610</pre>
   <p class="note">The file needs a date column, a product column and an amount column (any order, header names like Date, Product, Amount or Sales). Dates can be 2026-11-05 or 11/05/2026 (month first). Everything runs in your browser; the file is not uploaded anywhere.</p>
 </div>
 
@@ -219,6 +225,7 @@
     return lines.join('\r\n') + '\r\n';
   }
   $('sample').onclick = function () { build(sampleCSV(), 'Sample data'); };
+  build(sampleCSV(), 'Sample data'); // show an example report on first load
   $('dl').onclick = function () {
     var a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([sampleCSV()], { type: 'text/csv;charset=utf-8' }));
