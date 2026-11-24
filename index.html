@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monthly Sales Reporting</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #ffffff; --fg: #111111; --muted: #666666; --faint: #aaaaaa;
+    --border: #dddddd; --field: #ffffff; --btn: #efefef; --card: #f5f5f5; --bar: #85b7eb; --bar2: #d4537e; --bad: #cc0000;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #1b1b1f; --fg: #eeeeee; --muted: #a0a0a8; --faint: #666670;
+    --border: #3a3a42; --field: #26262c; --btn: #33333b; --card: #26262c; --bar: #4a8fd4; --bar2: #e0699a; --bad: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--fg); font-family: system-ui, sans-serif; max-width: 760px; margin: 40px auto; padding: 0 16px; line-height: 1.6; }
+  h1 { text-align: center; color: #ec4899; margin: 8px 0 0; }
+  .sub { text-align: center; color: var(--muted); font-size: 14px; margin: 4px 0 0; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 28px 0 8px; }
+  p { margin: 0 0 10px; }
+  button { background: var(--btn); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; font: inherit; padding: 8px 12px; cursor: pointer; }
+  input[type=file] { display: none; }
+  .top { text-align: right; }
+  #theme { font-size: 18px; padding: 4px 8px; }
+  .report { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+  .tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .tools .info { font-size: 13px; color: var(--muted); }
+  #msg { color: var(--bad); font-size: 14px; min-height: 20px; }
+  .tw { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--border); }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  td:nth-child(1), td:nth-child(2) { white-space: nowrap; }
+  td.barcell { width: 40%; min-width: 50px; }
+  @media (max-width: 480px) { table { font-size: 13px; } th, td { padding: 6px 3px; } }
+  .bar { height: 10px; border-radius: 3px; background: var(--bar); min-width: 2px; }
+  tr.sub td { font-weight: 600; background: rgba(128,128,128,.08); }
+  tr.sub .bar { background: var(--bar2); }
+  tr.grand td { font-weight: 700; border-bottom: none; }
+  .empty { color: var(--faint); text-align: center; padding: 18px 0; }
+  .note { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
+  ol { padding-left: 20px; margin: 0 0 10px; }
+</style>
+</head>
+<body>
+<div class="top"><button type="button" id="theme"></button></div>
+<h1>Monthly sales reporting</h1>
+<p class="sub">How Claude Code or Codex improves productivity</p>
+
+<h2>Business process</h2>
+<p>Staff used to open raw sales spreadsheets, clean them and add up the totals by hand each month. That is slow, repetitive and easy to get wrong.</p>
+<p>With Claude Code or Codex, you describe the report in one prompt, and the AI writes and runs a small program that does the work. The program reads the sales file, adds up sales for each month and product, and shows the result in a table with bars. Each month the team uploads the new file and gets the report in seconds. They only check the numbers, so it takes less time and has fewer human errors.</p>
+
+<h2>Try the report</h2>
+<div class="report">
+  <div class="tools">
+    <button type="button" id="upload">Upload sales file (CSV)</button>
+    <input type="file" id="file" accept=".csv,text/csv,text/plain">
+    <button type="button" id="sample">Load sample data</button>
+    <button type="button" id="dl">Download sample CSV</button>
+    <span class="info" id="info"></span>
+  </div>
+  <div id="msg" role="alert"></div>
+  <div class="tw"><table>
+    <thead><tr><th>Month</th><th>Product</th><th>Sales</th><th class="num">Total</th></tr></thead>
+    <tbody id="body"><tr><td colspan="4" class="empty">Upload a file or load the sample data to see the report</td></tr></tbody>
+  </table></div>
+  <p class="note">The file needs a date column, a product column and an amount column (any order, header names like Date, Product, Amount or Sales). Dates can be 2026-11-05 or 11/05/2026 (month first). Everything runs in your browser; the file is not uploaded anywhere.</p>
+</div>
+
+<script>
+  function $(id) { return document.getElementById(id); }
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  var money2 = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+  var MAX_BYTES = 5 * 1024 * 1024;
+
+  // ---- theme ----
+  var theme = null;
+  try { theme = localStorage.getItem('theme'); } catch (e) {}
+  if (theme !== 'light' && theme !== 'dark') {
+    theme = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  function applyTheme() {
+    document.documentElement.setAttribute('data-theme', theme);
+    $('theme').textContent = theme === 'dark' ? '☀️' : '🌙';
+    var label = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+    $('theme').title = label; $('theme').setAttribute('aria-label', label);
+  }
+  $('theme').onclick = function () {
+    theme = theme === 'dark' ? 'light' : 'dark';
+    try { localStorage.setItem('theme', theme); } catch (e) {}
+    applyTheme();
+  };
+  applyTheme();
+
+  // ---- CSV parsing (handles quotes, commas in quotes, CRLF) ----
+  function parseCSV(text) {
+    var rows = [], row = [], field = '', q = false;
+    text = text.replace(/^﻿/, '');
+    for (var i = 0; i < text.length; i++) {
+      var c = text[i];
+      if (q) {
+        if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else q = false; }
+        else field += c;
+      } else if (c === '"') q = true;
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\n' || c === '\r') {
+        if (c === '\r' && text[i + 1] === '\n') i++;
+        row.push(field); field = '';
+        if (row.length > 1 || row[0] !== '') rows.push(row);
+        row = [];
+      } else field += c;
+    }
+    row.push(field);
+    if (row.length > 1 || row[0] !== '') rows.push(row);
+    return rows;
+  }
+  function findCol(header, names) {
+    for (var i = 0; i < header.length; i++) {
+      var h = header[i].trim().toLowerCase();
+      if (names.indexOf(h) >= 0) return i;
+    }
+    return -1;
+  }
+  function monthKey(s) {
+    s = s.trim();
+    var m = /^(\d{4})[-\/](\d{1,2})(?:[-\/]\d{1,2})?/.exec(s);
+    var y, mo;
+    if (m) { y = +m[1]; mo = +m[2]; }
+    else {
+      m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
+      if (!m) return null;
+      mo = +m[1]; y = +m[3];
+    }
+    if (mo < 1 || mo > 12) return null;
+    return y + '-' + (mo < 10 ? '0' : '') + mo;
+  }
+  function parseAmount(s) {
+    var neg = /^\(.*\)$/.test(s.trim());
+    var n = parseFloat(s.replace(/[^0-9.\-]/g, ''));
+    if (!isFinite(n)) return null;
+    return neg ? -Math.abs(n) : n;
+  }
+
+  // ---- report ----
+  function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+  function label(k) { var a = k.split('-'); return MONTHS[+a[1] - 1] + ' ' + a[0]; }
+
+  function build(text, name) {
+    $('msg').textContent = '';
+    var rows = parseCSV(text);
+    if (rows.length < 2) return fail('That file has no data rows.');
+    var h = rows[0];
+    var cd = findCol(h, ['date', 'month', 'order date', 'sale date', 'sold on']);
+    var cp = findCol(h, ['product', 'item', 'product name', 'sku']);
+    var ca = findCol(h, ['amount', 'sales', 'total', 'revenue', 'value', 'sale amount']);
+    if (cd < 0 || cp < 0 || ca < 0) return fail('Could not find the columns. The first row needs headers for date, product and amount.');
+    var sums = {}, ok = 0, bad = 0;
+    for (var i = 1; i < rows.length; i++) {
+      var r = rows[i], k = r[cd] != null ? monthKey(r[cd]) : null, a = r[ca] != null ? parseAmount(r[ca]) : null;
+      var p = r[cp] != null ? r[cp].trim() : '';
+      if (!k || a === null || !p) { bad++; continue; }
+      sums[k] = sums[k] || {};
+      sums[k][p] = (sums[k][p] || 0) + a;
+      ok++;
+    }
+    if (!ok) return fail('No usable rows found. Check the date and amount formats.');
+    render(sums);
+    $('info').textContent = name + ' · ' + ok + ' rows read' + (bad ? ', ' + bad + ' skipped' : '');
+    if (bad) $('msg').textContent = bad + (bad === 1 ? ' row was' : ' rows were') + ' skipped because of a missing product or an unreadable date or amount.';
+  }
+  function fail(t) { $('msg').textContent = t; return false; }
+
+  function render(sums) {
+    var body = $('body'); body.textContent = '';
+    var months = Object.keys(sums).sort(), max = 0, grand = 0, mmax = 0;
+    months.forEach(function (k) {
+      var t = 0;
+      Object.keys(sums[k]).forEach(function (p) { max = Math.max(max, Math.abs(sums[k][p])); t += sums[k][p]; });
+      mmax = Math.max(mmax, Math.abs(t));
+    });
+    months.forEach(function (k) {
+      var total = 0;
+      Object.keys(sums[k]).sort().forEach(function (p) {
+        var v = sums[k][p]; total += v;
+        var tr = el('tr');
+        tr.appendChild(el('td', '', label(k)));
+        tr.appendChild(el('td', '', p));
+        var bc = el('td', 'barcell'), b = el('div', 'bar'); b.style.width = (max ? Math.abs(v) / max * 100 : 0) + '%'; b.title = money2.format(v);
+        bc.appendChild(b); tr.appendChild(bc);
+        tr.appendChild(el('td', 'num', money.format(v)));
+        body.appendChild(tr);
+      });
+      grand += total;
+      var st = el('tr', 'sub');
+      st.appendChild(el('td', '', label(k) + ' total')); st.appendChild(el('td', '', ''));
+      var sc = el('td', 'barcell'), sb = el('div', 'bar'); sb.style.width = (mmax ? Math.abs(total) / mmax * 100 : 0) + '%'; sc.appendChild(sb); st.appendChild(sc);
+      st.appendChild(el('td', 'num', money.format(total)));
+      body.appendChild(st);
+    });
+    var g = el('tr', 'grand');
+    g.appendChild(el('td', '', 'Grand total')); g.appendChild(el('td', '', '')); g.appendChild(el('td', '', ''));
+    g.appendChild(el('td', 'num', money.format(grand)));
+    body.appendChild(g);
+  }
+
+  // ---- sample data (made up) ----
+  function sampleCSV() {
+    var products = [['Widget A', 900], ['Widget B', 620], ['Gadget C', 410]], seed = 7, lines = ['Date,Product,Amount'];
+    function rnd() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
+    for (var m = 7; m <= 11; m++) {
+      for (var d = 1; d <= 28; d += 3) {
+        products.forEach(function (p) {
+          var amt = Math.round(p[1] * (0.6 + rnd() * 0.9) * (1 + (m - 7) * 0.05));
+          lines.push('2026-' + (m < 10 ? '0' : '') + m + '-' + (d < 10 ? '0' : '') + d + ',' + p[0] + ',' + amt);
+        });
+      }
+    }
+    return lines.join('\r\n') + '\r\n';
+  }
+  $('sample').onclick = function () { build(sampleCSV(), 'Sample data'); };
+  $('dl').onclick = function () {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([sampleCSV()], { type: 'text/csv;charset=utf-8' }));
+    a.download = 'sample-sales.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  };
+  $('upload').onclick = function () { $('file').click(); };
+  $('file').onchange = function () {
+    var f = $('file').files[0]; if (!f) return;
+    if (f.size > MAX_BYTES) { fail('That file is over 5 MB.'); return; }
+    var fr = new FileReader();
+    fr.onerror = function () { fail('Could not read that file.'); };
+    fr.onload = function () { build(String(fr.result), f.name); };
+    fr.readAsText(f);
+    $('file').value = '';
+  };
+</script>
+</body>
+</html>
