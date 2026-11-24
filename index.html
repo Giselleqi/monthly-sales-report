@@ -32,14 +32,21 @@
   .tw { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
   th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--border); }
-  th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  th { font-size: 12px; font-weight: 600; background: #ec4899; color: #fff; }
+  th:first-child { border-radius: 6px 0 0 6px; } th:last-child { border-radius: 0 6px 6px 0; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+  .tw + h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 18px 0 6px; }
+  table.pivot td.num { color: var(--fg); }
+  table.pivot tr.tot td { font-weight: 700; border-bottom: none; }
+  table.ex td:nth-child(3) { text-align: right; }
+  table.ex th:nth-child(3) { text-align: right; }
   td.num, th.num { text-align: right; white-space: nowrap; }
   td:nth-child(1), td:nth-child(2) { white-space: nowrap; }
   td.barcell { width: 40%; min-width: 50px; }
   @media (max-width: 480px) { table { font-size: 13px; } th, td { padding: 6px 3px; } }
   .bar { height: 10px; border-radius: 3px; background: var(--bar); min-width: 2px; }
   tr.sub td { font-weight: 600; background: rgba(128,128,128,.08); }
-  tr.sub .bar { background: var(--bar2); }
+  tr.sub .bar { background: #6b6b75; }
   tr.grand td { font-weight: 700; border-bottom: none; }
   .empty { color: var(--faint); text-align: center; padding: 18px 0; }
   .note { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
@@ -64,12 +71,18 @@
     <thead><tr><th>Month</th><th>Product</th><th>Sales</th><th class="num">Total</th></tr></thead>
     <tbody id="body"><tr><td colspan="4" class="empty">Upload a file or load the sample data to see the report</td></tr></tbody>
   </table></div>
-  <p class="note" style="margin-top:12px">Example of a sales file:</p>
-<pre class="ex">Date,Product,Amount
-2026-10-03,Widget A,1250
-2026-10-17,Widget B,820
-2026-11-05,Widget A,1430
-11/21/2026,Gadget C,610</pre>
+  <h3>Summary by product</h3>
+  <div class="tw"><table class="pivot" id="pivot"></table></div>
+  <h3>Example of a sales file</h3>
+  <div class="tw"><table class="ex">
+    <thead><tr><th>Date</th><th>Product</th><th>Amount</th></tr></thead>
+    <tbody>
+      <tr><td>2026-10-03</td><td><span class="dot" style="background:#378add"></span>Widget A</td><td>1250</td></tr>
+      <tr><td>2026-10-17</td><td><span class="dot" style="background:#d4537e"></span>Widget B</td><td>820</td></tr>
+      <tr><td>2026-11-05</td><td><span class="dot" style="background:#378add"></span>Widget A</td><td>1430</td></tr>
+      <tr><td>11/21/2026</td><td><span class="dot" style="background:#1d9e75"></span>Gadget C</td><td>610</td></tr>
+    </tbody>
+  </table></div>
   <p class="note">The file needs a date column, a product column and an amount column (any order, header names like Date, Product, Amount or Sales). Dates can be 2026-11-05 or 11/05/2026 (month first). Everything runs in your browser; the file is not uploaded anywhere.</p>
 </div>
 
@@ -180,6 +193,12 @@
   function render(sums) {
     var body = $('body'); body.textContent = '';
     var months = Object.keys(sums).sort(), max = 0, grand = 0, mmax = 0;
+    var products = [];
+    months.forEach(function (k) { Object.keys(sums[k]).forEach(function (p) { if (products.indexOf(p) < 0) products.push(p); }); });
+    products.sort();
+    var PALETTE = ['#378add', '#d4537e', '#1d9e75', '#ba7517', '#7f77dd', '#d85a30', '#15aabf', '#868e96'];
+    function colorOf(p) { return PALETTE[products.indexOf(p) % PALETTE.length]; }
+    renderPivot(sums, months, products, colorOf);
     months.forEach(function (k) {
       var t = 0;
       Object.keys(sums[k]).forEach(function (p) { max = Math.max(max, Math.abs(sums[k][p])); t += sums[k][p]; });
@@ -191,8 +210,10 @@
         var v = sums[k][p]; total += v;
         var tr = el('tr');
         tr.appendChild(el('td', '', label(k)));
-        tr.appendChild(el('td', '', p));
+        var pc = el('td'), dot = el('span', 'dot'); dot.style.background = colorOf(p);
+        pc.appendChild(dot); pc.appendChild(document.createTextNode(p)); tr.appendChild(pc);
         var bc = el('td', 'barcell'), b = el('div', 'bar'); b.style.width = (max ? Math.abs(v) / max * 100 : 0) + '%'; b.title = money2.format(v);
+        b.style.background = colorOf(p);
         bc.appendChild(b); tr.appendChild(bc);
         tr.appendChild(el('td', 'num', money.format(v)));
         body.appendChild(tr);
@@ -208,6 +229,35 @@
     g.appendChild(el('td', '', 'Grand total')); g.appendChild(el('td', '', '')); g.appendChild(el('td', '', ''));
     g.appendChild(el('td', 'num', money.format(grand)));
     body.appendChild(g);
+  }
+
+  function renderPivot(sums, months, products, colorOf) {
+    var t = $('pivot'); t.textContent = '';
+    var head = el('tr'); head.appendChild(el('th', '', 'Product'));
+    months.forEach(function (k) { var h = el('th', 'num', label(k)); head.appendChild(h); });
+    head.appendChild(el('th', 'num', 'Total'));
+    var thead = el('thead'); thead.appendChild(head); t.appendChild(thead);
+    var tb = el('tbody'), colTot = months.map(function () { return 0; }), grand = 0, cellMax = 0;
+    products.forEach(function (p) { months.forEach(function (k) { cellMax = Math.max(cellMax, Math.abs(sums[k][p] || 0)); }); });
+    products.forEach(function (p) {
+      var tr = el('tr'), pc = el('td'), dot = el('span', 'dot'), rt = 0;
+      dot.style.background = colorOf(p); pc.appendChild(dot); pc.appendChild(document.createTextNode(p)); tr.appendChild(pc);
+      months.forEach(function (k, i) {
+        var v = sums[k][p] || 0; rt += v; colTot[i] += v;
+        var td = el('td', 'num', v ? money.format(v) : '–');
+        if (v && cellMax) {
+          var a = Math.round(25 + Math.abs(v) / cellMax * 95).toString(16);
+          td.style.background = colorOf(p) + (a.length < 2 ? '0' + a : a);
+        }
+        tr.appendChild(td);
+      });
+      grand += rt; tr.appendChild(el('td', 'num', money.format(rt))); tr.lastChild.style.fontWeight = '600';
+      tb.appendChild(tr);
+    });
+    var tot = el('tr', 'tot'); tot.appendChild(el('td', '', 'Total'));
+    colTot.forEach(function (v) { tot.appendChild(el('td', 'num', money.format(v))); });
+    tot.appendChild(el('td', 'num', money.format(grand)));
+    tb.appendChild(tot); t.appendChild(tb);
   }
 
   // ---- sample data (made up) ----
